@@ -4,6 +4,9 @@
 #include <cfloat>
 #include <cmath>
 
+
+// This was generated using claude
+
 // ============================================================
 // Type conversion helpers — load/store in T, compute in float
 // ============================================================

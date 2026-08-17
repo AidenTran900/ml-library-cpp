@@ -63,11 +63,11 @@ Matrix<T> TransformerBlock<T>::ffnForward(const Matrix<T>& x) {
         return ff2.forward(ff1.forward(x));
     }
 
-    // Gated SiLU: down(silu(gate(x)) ⊙ up(x))
+    // gated SiLU
     Matrix<T> gate_out = ff_gate->forward(x);
     Matrix<T> up_out = ff1.forward(x);
 
-    // Apply SiLU to gate: x * sigmoid(x)
+    // apply SiLU to gate
     for (int i = 0; i < gate_out.rows(); i++) {
         for (int j = 0; j < gate_out.cols(); j++) {
             double val = static_cast<double>(gate_out(i, j));
@@ -75,7 +75,6 @@ Matrix<T> TransformerBlock<T>::ffnForward(const Matrix<T>& x) {
         }
     }
 
-    // Cache for backward
     gate_cache = gate_out;
     up_cache = up_out;
 
@@ -88,20 +87,15 @@ Matrix<T> TransformerBlock<T>::ffnBackward(const Matrix<T>& g) {
         return ff1.backward(ff2.backward(g));
     }
 
-    // Gated SiLU backward
+    // gated SiLU backward
     Matrix<T> grad_hidden = ff2.backward(g);
 
-    // grad w.r.t. gate_activated = grad_hidden ⊙ up_cache
     Matrix<T> grad_gate_act = grad_hidden.hadamard(up_cache);
-    // grad w.r.t. up = grad_hidden ⊙ gate_cache (post-silu)
     Matrix<T> grad_up = grad_hidden.hadamard(gate_cache);
 
     Matrix<T> grad_ff1 = ff1.backward(grad_up);
 
-    // SiLU derivative: sigmoid(x) * (1 + x * (1 - sigmoid(x)))
-    // But we have post-silu values. Re-derive from gate's pre-activation.
-    // For simplicity, use chain rule through ff_gate's backward which handles its own activation.
-    // Since ff_gate uses LINEAR, grad_gate_act passes through directly.
+    // SiLU derivative
     Matrix<T> grad_gate = ff_gate->backward(grad_gate_act);
 
     return grad_ff1 + grad_gate;
@@ -115,7 +109,7 @@ Matrix<T> TransformerBlock<T>::forward(const Matrix<T>& input)
     attention_input_cache = input;
 
     if (norm_position == NormPosition::PRE_NORM) {
-        // Pre-norm: norm → layer → residual add
+        // Pre-norm
         Matrix<T> normed1 = normForward1(input);
         Matrix<T> attn_out = attention.forward(normed1);
         Matrix<T> residual1 = input + attn_out;
@@ -126,7 +120,7 @@ Matrix<T> TransformerBlock<T>::forward(const Matrix<T>& input)
         return residual1 + ff_out;
     }
 
-    // Post-norm: layer → residual add → norm
+    // Post-norm
     Matrix<T> attn_out = attention.forward(input);
     Matrix<T> residual1 = input + attn_out;
     Matrix<T> normed1 = normForward1(residual1);
@@ -193,14 +187,14 @@ template<typename T>
 Matrix<T> TransformerBlock<T>::backward(const Matrix<T>& grad_output)
 {
     if (norm_position == NormPosition::PRE_NORM) {
-        // Reverse of pre-norm forward
+        // reverse of pre-norm forward
         Matrix<T> grad_ff = ffnBackward(normBackward2(grad_output));
         Matrix<T> grad_residual1 = grad_output + grad_ff;
         Matrix<T> grad_attn = attention.backward(normBackward1(grad_residual1));
         return grad_residual1 + grad_attn;
     }
 
-    // Reverse of post-norm forward
+    // reverse of post-norm forward
     Matrix<T> grad_norm2 = normBackward2(grad_output);
     Matrix<T> grad_ff = ffnBackward(grad_norm2);
     Matrix<T> grad_residual1 = grad_norm2 + grad_ff;

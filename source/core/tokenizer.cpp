@@ -471,7 +471,6 @@ std::string Tokenizer::decode(const std::vector<int>& ids) {
         }
     }
 
-    // trim trailing space from BPE end-of-word markers
     if (!result.empty() && result.back() == ' ') {
         result.pop_back();
     }

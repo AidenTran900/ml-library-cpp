@@ -2,6 +2,7 @@
 #include "config.h"
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <string>
 #include <type_traits>
 #if ML_HAS_AVX2 && ML_USE_SIMD
@@ -12,6 +13,7 @@
 #endif
 
 const int DEFAULT_BLOCK_SIZE = 64;
+const int PACK_STRIDE = DEFAULT_BLOCK_SIZE + 16;
 
 template<typename T>
 Matrix<T>::Matrix()
@@ -191,18 +193,40 @@ Matrix<T> Matrix<T>::operator*(const Matrix& other) const {
             #endif
             for (int jj = 0; jj < N; jj += DEFAULT_BLOCK_SIZE) {
                 const int j_end = std::min(jj + DEFAULT_BLOCK_SIZE, N);
-                for (int k = 0; k < K; k++) {
-                    __m256d a_k = _mm256_set1_pd(A[k]);
-                    int j = jj;
-                    for (; j + 4 <= j_end; j += 4) {
-                        __m256d c_vec = _mm256_loadu_pd(&C[j]);
+                int j = jj;
+                for (; j + 16 <= j_end; j += 16) {
+                    __m256d c0 = _mm256_loadu_pd(&C[j]);
+                    __m256d c1 = _mm256_loadu_pd(&C[j + 4]);
+                    __m256d c2 = _mm256_loadu_pd(&C[j + 8]);
+                    __m256d c3 = _mm256_loadu_pd(&C[j + 12]);
+                    for (int k = 0; k < K; k++) {
+                        __m256d a_k = _mm256_set1_pd(A[k]);
+                        const T* b_row = &B[static_cast<size_t>(k * N + j)];
+                        c0 = _mm256_fmadd_pd(a_k, _mm256_loadu_pd(b_row), c0);
+                        c1 = _mm256_fmadd_pd(a_k, _mm256_loadu_pd(b_row + 4), c1);
+                        c2 = _mm256_fmadd_pd(a_k, _mm256_loadu_pd(b_row + 8), c2);
+                        c3 = _mm256_fmadd_pd(a_k, _mm256_loadu_pd(b_row + 12), c3);
+                    }
+                    _mm256_storeu_pd(&C[j], c0);
+                    _mm256_storeu_pd(&C[j + 4], c1);
+                    _mm256_storeu_pd(&C[j + 8], c2);
+                    _mm256_storeu_pd(&C[j + 12], c3);
+                }
+                for (; j + 4 <= j_end; j += 4) {
+                    __m256d c_vec = _mm256_loadu_pd(&C[j]);
+                    for (int k = 0; k < K; k++) {
+                        __m256d a_k = _mm256_set1_pd(A[k]);
                         __m256d b_vec = _mm256_loadu_pd(&B[static_cast<size_t>(k * N + j)]);
                         c_vec = _mm256_fmadd_pd(a_k, b_vec, c_vec);
-                        _mm256_storeu_pd(&C[j], c_vec);
                     }
-                    for (; j < j_end; j++) {
-                        C[j] += A[k] * B[static_cast<size_t>(k * N + j)];
+                    _mm256_storeu_pd(&C[j], c_vec);
+                }
+                for (; j < j_end; j++) {
+                    T sum = C[j];
+                    for (int k = 0; k < K; k++) {
+                        sum += A[k] * B[static_cast<size_t>(k * N + j)];
                     }
+                    C[j] = sum;
                 }
             }
         } else if constexpr (std::is_same_v<T, float>) {
@@ -211,18 +235,40 @@ Matrix<T> Matrix<T>::operator*(const Matrix& other) const {
             #endif
             for (int jj = 0; jj < N; jj += DEFAULT_BLOCK_SIZE) {
                 const int j_end = std::min(jj + DEFAULT_BLOCK_SIZE, N);
-                for (int k = 0; k < K; k++) {
-                    __m256 a_k = _mm256_set1_ps(A[k]);
-                    int j = jj;
-                    for (; j + 8 <= j_end; j += 8) {
-                        __m256 c_vec = _mm256_loadu_ps(&C[j]);
+                int j = jj;
+                for (; j + 32 <= j_end; j += 32) {
+                    __m256 c0 = _mm256_loadu_ps(&C[j]);
+                    __m256 c1 = _mm256_loadu_ps(&C[j + 8]);
+                    __m256 c2 = _mm256_loadu_ps(&C[j + 16]);
+                    __m256 c3 = _mm256_loadu_ps(&C[j + 24]);
+                    for (int k = 0; k < K; k++) {
+                        __m256 a_k = _mm256_set1_ps(A[k]);
+                        const T* b_row = &B[static_cast<size_t>(k * N + j)];
+                        c0 = _mm256_fmadd_ps(a_k, _mm256_loadu_ps(b_row), c0);
+                        c1 = _mm256_fmadd_ps(a_k, _mm256_loadu_ps(b_row + 8), c1);
+                        c2 = _mm256_fmadd_ps(a_k, _mm256_loadu_ps(b_row + 16), c2);
+                        c3 = _mm256_fmadd_ps(a_k, _mm256_loadu_ps(b_row + 24), c3);
+                    }
+                    _mm256_storeu_ps(&C[j], c0);
+                    _mm256_storeu_ps(&C[j + 8], c1);
+                    _mm256_storeu_ps(&C[j + 16], c2);
+                    _mm256_storeu_ps(&C[j + 24], c3);
+                }
+                for (; j + 8 <= j_end; j += 8) {
+                    __m256 c_vec = _mm256_loadu_ps(&C[j]);
+                    for (int k = 0; k < K; k++) {
+                        __m256 a_k = _mm256_set1_ps(A[k]);
                         __m256 b_vec = _mm256_loadu_ps(&B[static_cast<size_t>(k * N + j)]);
                         c_vec = _mm256_fmadd_ps(a_k, b_vec, c_vec);
-                        _mm256_storeu_ps(&C[j], c_vec);
                     }
-                    for (; j < j_end; j++) {
-                        C[j] += A[k] * B[static_cast<size_t>(k * N + j)];
+                    _mm256_storeu_ps(&C[j], c_vec);
+                }
+                for (; j < j_end; j++) {
+                    T sum = C[j];
+                    for (int k = 0; k < K; k++) {
+                        sum += A[k] * B[static_cast<size_t>(k * N + j)];
                     }
+                    C[j] = sum;
                 }
             }
         } else {
@@ -255,23 +301,59 @@ Matrix<T> Matrix<T>::operator*(const Matrix& other) const {
             const int i_end = std::min(ii + DEFAULT_BLOCK_SIZE, M);
             for (int kk = 0; kk < K; kk += DEFAULT_BLOCK_SIZE) {
                 const int k_end = std::min(kk + DEFAULT_BLOCK_SIZE, K);
+                const int kb = k_end - kk;
                 for (int jj = 0; jj < N; jj += DEFAULT_BLOCK_SIZE) {
                     const int j_end = std::min(jj + DEFAULT_BLOCK_SIZE, N);
+                    const int jb = j_end - jj;
+
+                    T b_pack[DEFAULT_BLOCK_SIZE * PACK_STRIDE];
+                    for (int kl = 0; kl < kb; kl++) {
+                        std::memcpy(&b_pack[static_cast<size_t>(kl) * PACK_STRIDE],
+                                    &B[static_cast<size_t>((kk + kl) * N + jj)],
+                                    static_cast<size_t>(jb) * sizeof(T));
+                    }
+
                     for (int i = ii; i < i_end; i++) {
-                        for (int k = kk; k < k_end; k++) {
-                            __m256d a_ik = _mm256_set1_pd(A[static_cast<size_t>(i * K + k)]);
-                            int j = jj;
-                            for (; j + 4 <= j_end; j += 4) {
-                                size_t c_idx = static_cast<size_t>(i * N + j);
-                                size_t b_idx = static_cast<size_t>(k * N + j);
-                                __m256d c_vec = _mm256_loadu_pd(&C[c_idx]);
-                                __m256d b_vec = _mm256_loadu_pd(&B[b_idx]);
+                        int j = jj;
+                        for (; j + 16 <= j_end; j += 16) {
+                            size_t base = static_cast<size_t>(i * N + j);
+                            __m256d c0 = _mm256_loadu_pd(&C[base]);
+                            __m256d c1 = _mm256_loadu_pd(&C[base + 4]);
+                            __m256d c2 = _mm256_loadu_pd(&C[base + 8]);
+                            __m256d c3 = _mm256_loadu_pd(&C[base + 12]);
+                            const int jl0 = j - jj;
+                            for (int kl = 0; kl < kb; kl++) {
+                                __m256d a_ik = _mm256_set1_pd(A[static_cast<size_t>(i * K + kk + kl)]);
+                                const T* b_row = &b_pack[static_cast<size_t>(kl) * PACK_STRIDE + jl0];
+                                c0 = _mm256_fmadd_pd(a_ik, _mm256_loadu_pd(b_row), c0);
+                                c1 = _mm256_fmadd_pd(a_ik, _mm256_loadu_pd(b_row + 4), c1);
+                                c2 = _mm256_fmadd_pd(a_ik, _mm256_loadu_pd(b_row + 8), c2);
+                                c3 = _mm256_fmadd_pd(a_ik, _mm256_loadu_pd(b_row + 12), c3);
+                            }
+                            _mm256_storeu_pd(&C[base], c0);
+                            _mm256_storeu_pd(&C[base + 4], c1);
+                            _mm256_storeu_pd(&C[base + 8], c2);
+                            _mm256_storeu_pd(&C[base + 12], c3);
+                        }
+                        for (; j + 4 <= j_end; j += 4) {
+                            size_t c_idx = static_cast<size_t>(i * N + j);
+                            __m256d c_vec = _mm256_loadu_pd(&C[c_idx]);
+                            const int jl0 = j - jj;
+                            for (int kl = 0; kl < kb; kl++) {
+                                __m256d a_ik = _mm256_set1_pd(A[static_cast<size_t>(i * K + kk + kl)]);
+                                __m256d b_vec = _mm256_loadu_pd(&b_pack[static_cast<size_t>(kl) * PACK_STRIDE + jl0]);
                                 c_vec = _mm256_fmadd_pd(a_ik, b_vec, c_vec);
-                                _mm256_storeu_pd(&C[c_idx], c_vec);
                             }
-                            for (; j < j_end; j++) {
-                                C[static_cast<size_t>(i * N + j)] += A[static_cast<size_t>(i * K + k)] * B[static_cast<size_t>(k * N + j)];
+                            _mm256_storeu_pd(&C[c_idx], c_vec);
+                        }
+                        for (; j < j_end; j++) {
+                            size_t c_idx = static_cast<size_t>(i * N + j);
+                            T sum = C[c_idx];
+                            const int jl0 = j - jj;
+                            for (int kl = 0; kl < kb; kl++) {
+                                sum += A[static_cast<size_t>(i * K + kk + kl)] * b_pack[static_cast<size_t>(kl) * PACK_STRIDE + jl0];
                             }
+                            C[c_idx] = sum;
                         }
                     }
                 }
@@ -285,23 +367,59 @@ Matrix<T> Matrix<T>::operator*(const Matrix& other) const {
             const int i_end = std::min(ii + DEFAULT_BLOCK_SIZE, M);
             for (int kk = 0; kk < K; kk += DEFAULT_BLOCK_SIZE) {
                 const int k_end = std::min(kk + DEFAULT_BLOCK_SIZE, K);
+                const int kb = k_end - kk;
                 for (int jj = 0; jj < N; jj += DEFAULT_BLOCK_SIZE) {
                     const int j_end = std::min(jj + DEFAULT_BLOCK_SIZE, N);
+                    const int jb = j_end - jj;
+
+                    T b_pack[DEFAULT_BLOCK_SIZE * PACK_STRIDE];
+                    for (int kl = 0; kl < kb; kl++) {
+                        std::memcpy(&b_pack[static_cast<size_t>(kl) * PACK_STRIDE],
+                                    &B[static_cast<size_t>((kk + kl) * N + jj)],
+                                    static_cast<size_t>(jb) * sizeof(T));
+                    }
+
                     for (int i = ii; i < i_end; i++) {
-                        for (int k = kk; k < k_end; k++) {
-                            __m256 a_ik = _mm256_set1_ps(A[static_cast<size_t>(i * K + k)]);
-                            int j = jj;
-                            for (; j + 8 <= j_end; j += 8) {
-                                size_t c_idx = static_cast<size_t>(i * N + j);
-                                size_t b_idx = static_cast<size_t>(k * N + j);
-                                __m256 c_vec = _mm256_loadu_ps(&C[c_idx]);
-                                __m256 b_vec = _mm256_loadu_ps(&B[b_idx]);
+                        int j = jj;
+                        for (; j + 32 <= j_end; j += 32) {
+                            size_t base = static_cast<size_t>(i * N + j);
+                            __m256 c0 = _mm256_loadu_ps(&C[base]);
+                            __m256 c1 = _mm256_loadu_ps(&C[base + 8]);
+                            __m256 c2 = _mm256_loadu_ps(&C[base + 16]);
+                            __m256 c3 = _mm256_loadu_ps(&C[base + 24]);
+                            const int jl0 = j - jj;
+                            for (int kl = 0; kl < kb; kl++) {
+                                __m256 a_ik = _mm256_set1_ps(A[static_cast<size_t>(i * K + kk + kl)]);
+                                const T* b_row = &b_pack[static_cast<size_t>(kl) * PACK_STRIDE + jl0];
+                                c0 = _mm256_fmadd_ps(a_ik, _mm256_loadu_ps(b_row), c0);
+                                c1 = _mm256_fmadd_ps(a_ik, _mm256_loadu_ps(b_row + 8), c1);
+                                c2 = _mm256_fmadd_ps(a_ik, _mm256_loadu_ps(b_row + 16), c2);
+                                c3 = _mm256_fmadd_ps(a_ik, _mm256_loadu_ps(b_row + 24), c3);
+                            }
+                            _mm256_storeu_ps(&C[base], c0);
+                            _mm256_storeu_ps(&C[base + 8], c1);
+                            _mm256_storeu_ps(&C[base + 16], c2);
+                            _mm256_storeu_ps(&C[base + 24], c3);
+                        }
+                        for (; j + 8 <= j_end; j += 8) {
+                            size_t c_idx = static_cast<size_t>(i * N + j);
+                            __m256 c_vec = _mm256_loadu_ps(&C[c_idx]);
+                            const int jl0 = j - jj;
+                            for (int kl = 0; kl < kb; kl++) {
+                                __m256 a_ik = _mm256_set1_ps(A[static_cast<size_t>(i * K + kk + kl)]);
+                                __m256 b_vec = _mm256_loadu_ps(&b_pack[static_cast<size_t>(kl) * PACK_STRIDE + jl0]);
                                 c_vec = _mm256_fmadd_ps(a_ik, b_vec, c_vec);
-                                _mm256_storeu_ps(&C[c_idx], c_vec);
                             }
-                            for (; j < j_end; j++) {
-                                C[static_cast<size_t>(i * N + j)] += A[static_cast<size_t>(i * K + k)] * B[static_cast<size_t>(k * N + j)];
+                            _mm256_storeu_ps(&C[c_idx], c_vec);
+                        }
+                        for (; j < j_end; j++) {
+                            size_t c_idx = static_cast<size_t>(i * N + j);
+                            T sum = C[c_idx];
+                            const int jl0 = j - jj;
+                            for (int kl = 0; kl < kb; kl++) {
+                                sum += A[static_cast<size_t>(i * K + kk + kl)] * b_pack[static_cast<size_t>(kl) * PACK_STRIDE + jl0];
                             }
+                            C[c_idx] = sum;
                         }
                     }
                 }

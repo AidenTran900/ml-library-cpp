@@ -9,6 +9,9 @@
 #include <cmath>
 #include <type_traits>
 
+// This was generated using claude
+
+
 // ============================================================
 // Local cuBLAS helpers (templated, row-major)
 // float → cublasSgemm, __half → cublasGemmEx (Tensor Core fp16)

@@ -246,6 +246,82 @@ if(ML_USE_CUDA)
     set_target_properties(LlamaExample PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 endif()
 
+#=================================#
+# SmolLM2 language model example  #
+#=================================#
+
+add_executable(SmolLM2Example
+    examples/c++/language-model/smollm2-135m.cpp
+    source/math/matrix.cpp
+    source/core/loss.cpp
+    source/core/optimizer.cpp
+    source/core/regularizer.cpp
+    source/core/tokenizer.cpp
+    source/core/token-sampler.cpp
+    source/core/embedding-layer.cpp
+    source/core/attention-layer.cpp
+    source/core/transformer-block.cpp
+    source/core/neural-network-layer.cpp
+    source/core/layer-norm.cpp
+    source/core/rms-norm.cpp
+    source/core/sin-pos-encode.cpp
+    source/core/rot-pos-encode.cpp
+    source/core/masking.cpp
+    source/models/transformer.cpp
+    source/utils/gguf-loader.cpp
+    source/utils/llama-loader.cpp
+)
+
+target_include_directories(SmolLM2Example
+    PRIVATE
+        ${CMAKE_CURRENT_LIST_DIR}/include
+        ${CMAKE_CURRENT_LIST_DIR}/source
+)
+
+target_link_libraries(SmolLM2Example
+    PRIVATE
+        fmt::fmt spdlog::spdlog $<$<BOOL:${OpenMP_CXX_FOUND}>:OpenMP::OpenMP_CXX>
+)
+
+target_compile_features(SmolLM2Example PRIVATE cxx_std_17)
+target_compile_options(SmolLM2Example PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-mavx2 -mfma>)
+
+if(ML_USE_CUDA)
+    target_sources(SmolLM2Example PRIVATE
+        source/cuda/cuda-matrix.cu
+        source/cuda/cuda-kernels.cu
+        source/cuda/gpu-transformer.cu
+    )
+    target_compile_definitions(SmolLM2Example PRIVATE ML_USE_CUDA)
+    target_link_libraries(SmolLM2Example PRIVATE CUDA::cublas CUDA::cudart)
+    set_target_properties(SmolLM2Example PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+endif()
+
+
+#=================================#
+#  SIMD matmul micro-benchmark    #
+#=================================#
+
+add_executable(SimdMatmulBenchmark
+    examples/c++/benchmarks/simd-matmul-benchmark.cpp
+    source/math/matrix.cpp
+    include/ml_lib/math/matrix.h
+)
+
+target_include_directories(SimdMatmulBenchmark
+    PRIVATE
+        ${CMAKE_CURRENT_LIST_DIR}/include
+        ${CMAKE_CURRENT_LIST_DIR}/source
+)
+
+target_link_libraries(SimdMatmulBenchmark
+    PRIVATE
+        $<$<BOOL:${OpenMP_CXX_FOUND}>:OpenMP::OpenMP_CXX>
+)
+
+target_compile_features(SimdMatmulBenchmark PRIVATE cxx_std_17)
+target_compile_options(SimdMatmulBenchmark PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-O3 -mavx2 -mfma>)
+
 #===============#
 #  Foo library  #
 #===============#

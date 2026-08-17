@@ -4,13 +4,11 @@
 #include <cmath>
 #include <stdexcept>
 
-// Legacy constructor — standard MHA (num_kv_heads == num_heads)
 template<typename T>
 AttentionLayer<T>::AttentionLayer(int embed_dim, int num_heads)
     : AttentionLayer(embed_dim, num_heads, num_heads)
 {}
 
-// GQA-aware constructor
 template<typename T>
 AttentionLayer<T>::AttentionLayer(int embed_dim, int num_heads, int num_kv_heads)
 {
@@ -113,15 +111,14 @@ Matrix<T> AttentionLayer<T>::forward(const Matrix<T>& input)
 
     input_cache = input;
 
-    Q_cache = input * W_q;  // (seq_len, embed_dim)
-    K_cache = input * W_k;  // (seq_len, kv_dim)
-    V_cache = input * W_v;  // (seq_len, kv_dim)
+    Q_cache = input * W_q;
+    K_cache = input * W_k;
+    V_cache = input * W_v;
 
     if (rope_enabled) {
         applyRoPE(Q_cache, K_cache, 0);
     }
 
-    // multi-head attention with GQA
     Matrix<T> output(seq_len, embed_dim);
     attention_weights_cache.clear();
     attention_weights_cache.resize(num_heads);
@@ -180,20 +177,18 @@ Matrix<T> AttentionLayer<T>::forward_prefill(const Matrix<T>& input)
 {
     int seq_len = input.rows();
 
-    Matrix<T> Q = input * W_q;  // (seq_len, embed_dim)
-    Matrix<T> K = input * W_k;  // (seq_len, kv_dim)
-    Matrix<T> V = input * W_v;  // (seq_len, kv_dim)
+    Matrix<T> Q = input * W_q;
+    Matrix<T> K = input * W_k;
+    Matrix<T> V = input * W_v;
 
     if (rope_enabled) {
         applyRoPE(Q, K, 0);
         cached_pos = seq_len;
     }
 
-    // Populate KV cache for subsequent forward_cached() calls
     kv_K_cache = K;
     kv_V_cache = V;
 
-    // Multi-head causal attention (same as forward())
     Matrix<T> output(seq_len, embed_dim);
     T scale = static_cast<T>(1.0) / static_cast<T>(std::sqrt((double)head_dim));
 
@@ -242,16 +237,15 @@ Matrix<T> AttentionLayer<T>::forward_prefill(const Matrix<T>& input)
 template<typename T>
 Matrix<T> AttentionLayer<T>::forward_cached(const Matrix<T>& input)
 {
-    Matrix<T> Q_new = input * W_q;  // (1, embed_dim)
-    Matrix<T> K_new = input * W_k;  // (1, kv_dim)
-    Matrix<T> V_new = input * W_v;  // (1, kv_dim)
+    Matrix<T> Q_new = input * W_q;
+    Matrix<T> K_new = input * W_k;
+    Matrix<T> V_new = input * W_v;
 
     if (rope_enabled) {
         applyRoPE(Q_new, K_new, cached_pos);
         cached_pos++;
     }
 
-    // append to KV cache (in-place, avoids full copy)
     kv_K_cache.appendRow(K_new);
     kv_V_cache.appendRow(V_new);
 
@@ -381,14 +375,14 @@ Matrix<T> AttentionLayer<T>::backward(const Matrix<T>& grad_output)
         // gradient K
         Matrix<T> grad_K_h = grad_scores.transpose() * Q_h;
 
-        // accumulate Q gradients (each Q head gets its own slice)
+        // accumulate Q gradients
         for (int i = 0; i < seq_len; i++) {
             for (int j = 0; j < head_dim; j++) {
                 grad_Q(i, q_start + j) = grad_Q_h(i, j);
             }
         }
 
-        // accumulate K/V gradients (multiple Q heads share the same KV head)
+        // accumulate K/V gradients
         for (int i = 0; i < seq_len; i++) {
             for (int j = 0; j < head_dim; j++) {
                 grad_K(i, kv_start + j) += grad_K_h(i, j);

@@ -4,7 +4,7 @@
 
 int main() {
     Tokenizer tokenizer;
-    auto model = LlamaLoader<float>::load("examples/datasets/language-model/Llama-3.2-1B-Instruct-Q8_0.gguf", tokenizer, 2048);
+    auto model = LlamaLoader<float>::load("examples/datasets/language-model/SmolLM2-135M-Instruct-Q8_0.gguf", tokenizer, 2048);
 
     // Ensure chat stop tokens are registered (GGUF may only provide eos_token_id)
     for (const auto& tok : {"<|eot_id|>", "<|end_of_text|>"}) {

@@ -3,6 +3,8 @@
 #include "ml_lib/cuda/cuda-matrix.h"
 #include "ml_lib/math/matrix.h"
 
+// This was generated using claude
+
 // Upload from CPU Matrix
 template<typename T>
 CudaMatrix<T>::CudaMatrix(const Matrix<T>& cpu)
