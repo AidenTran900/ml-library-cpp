@@ -6,7 +6,7 @@ The whole point of this is for me to better understand machine learning at a low
 ### Takeaways: 
 This project helped me understand the inner workings of systems and components in machine learning, as well as their relationships with each other. I learned how to take a simple Matrix implementation and expand it into a vast library. While this project taught me a lot, it's also very reductionist. I will learn and practice using/evaluating these models in future work.
 
-**Disclaimer:** AI was used in the creation of CUDA code and the GGUF/LLama loaders. I did this because my main focus was implementation ML models. In the future I will definitely learn more CUDA.
+**Disclaimer:** AI was used in the creation of CUDA code, GGUF/LLama loaders, and template metaprogramming. I did this because my main focus was implementation ML models. In the future I will definitely learn more CUDA.
 
 ## Features
 
